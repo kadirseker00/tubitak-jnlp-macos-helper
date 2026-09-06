@@ -14,7 +14,8 @@ struct JnlpScannerTests {
       name: "trusted.jnlp",
       origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
       codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
-      jarReference: "client.jar"
+      jarReference: "client.jar",
+      runtimeSupplierReference: "http://java.sun.com/products/autodl/j2se"
     )
     let whereFromsData = try ExtendedAttributes.data(
       for: ExtendedAttributes.whereFroms,
@@ -34,6 +35,100 @@ struct JnlpScannerTests {
     #expect(summary.quarantineAttributesRemoved == 1)
     #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) == nil)
     #expect(try ExtendedAttributes.data(for: ExtendedAttributes.whereFroms, at: file) != nil)
+  }
+
+  @Test("Native library resources remain quarantined")
+  func preservesQuarantineForNativeLibrary() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+
+    let file = try fixture.makeJnlp(
+      name: "native-library.jnlp",
+      origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
+      codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
+      jarReference: "client.jar",
+      additionalResource: #"<nativelib href="native.jar" />"#
+    )
+
+    let summary = try JnlpScanner().scan(directoryURL: fixture.directory)
+
+    #expect(summary.trustedCandidates == 0)
+    #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) != nil)
+  }
+
+  @Test("Extension JNLP resources remain quarantined")
+  func preservesQuarantineForExtension() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+
+    let file = try fixture.makeJnlp(
+      name: "extension.jnlp",
+      origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
+      codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
+      jarReference: "client.jar",
+      additionalResource: #"<extension href="component.jnlp" />"#
+    )
+
+    let summary = try JnlpScanner().scan(directoryURL: fixture.directory)
+
+    #expect(summary.trustedCandidates == 0)
+    #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) != nil)
+  }
+
+  @Test("JAR outside the trusted codebase path remains quarantined")
+  func preservesQuarantineForJarOutsideCodebasePath() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+
+    let file = try fixture.makeJnlp(
+      name: "outside-codebase.jnlp",
+      origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
+      codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
+      jarReference: "https://e-imza.tubitak.gov.tr/other/client.jar"
+    )
+
+    let summary = try JnlpScanner().scan(directoryURL: fixture.directory)
+
+    #expect(summary.trustedCandidates == 0)
+    #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) != nil)
+  }
+
+  @Test("Unexpected Java runtime supplier remains quarantined")
+  func preservesQuarantineForUnexpectedRuntimeSupplier() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+
+    let file = try fixture.makeJnlp(
+      name: "runtime-supplier.jnlp",
+      origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
+      codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
+      jarReference: "client.jar",
+      runtimeSupplierReference: "https://example.com/jre"
+    )
+
+    let summary = try JnlpScanner().scan(directoryURL: fixture.directory)
+
+    #expect(summary.trustedCandidates == 0)
+    #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) != nil)
+  }
+
+  @Test("External root JNLP reference remains quarantined")
+  func preservesQuarantineForExternalRootReference() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+
+    let file = try fixture.makeJnlp(
+      name: "external-root.jnlp",
+      origin: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/job.jnlp",
+      codebase: "https://e-imza.tubitak.gov.tr/sublimity-ess/jnlp/",
+      jarReference: "client.jar",
+      jnlpReference: "https://example.com/job.jnlp"
+    )
+
+    let summary = try JnlpScanner().scan(directoryURL: fixture.directory)
+
+    #expect(summary.trustedCandidates == 0)
+    #expect(try ExtendedAttributes.data(for: ExtendedAttributes.quarantine, at: file) != nil)
   }
 
   @Test("Lookalike origin host remains quarantined")
@@ -132,20 +227,26 @@ private final class Fixture {
     name: String,
     origin: String,
     codebase: String,
-    jarReference: String
+    jarReference: String,
+    runtimeSupplierReference: String? = nil,
+    additionalResource: String = "",
+    jnlpReference: String = "job.jnlp"
   ) throws -> URL {
     let file = directory.appendingPathComponent(name)
+    let runtimeSupplierAttribute = runtimeSupplierReference.map { " href=\"\($0)\"" } ?? ""
     let document = """
-      <jnlp spec="1.0+" codebase="\(codebase)" href="job.jnlp">
+      <jnlp spec="1.0+" codebase="\(codebase)" href="\(jnlpReference)">
         <information>
           <title>TUBITAK E-Signature</title>
           <vendor>TUBITAK</vendor>
         </information>
         <resources>
-          <java version="1.8*" />
+          <java version="1.8*"\(runtimeSupplierAttribute) />
           <jar href="\(jarReference)" />
+          \(additionalResource)
         </resources>
         <security><all-permissions /></security>
+        <application-desc main-class="example.Main" />
       </jnlp>
       """
     try Data(document.utf8).write(to: file)

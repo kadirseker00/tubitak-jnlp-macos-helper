@@ -4,15 +4,20 @@ public struct JnlpValidationPolicy: Sendable {
   public let trustedHost: String
   public let requiredCodebasePathPrefix: String
   public let maximumFileSize: Int
+  public let allowedRuntimeSupplierURLs: Set<String>
 
   public init(
     trustedHost: String = "e-imza.tubitak.gov.tr",
     requiredCodebasePathPrefix: String = "/sublimity-ess/jnlp/",
-    maximumFileSize: Int = 1_048_576
+    maximumFileSize: Int = 1_048_576,
+    allowedRuntimeSupplierURLs: Set<String> = [
+      "http://java.sun.com/products/autodl/j2se"
+    ]
   ) {
     self.trustedHost = trustedHost.lowercased()
     self.requiredCodebasePathPrefix = requiredCodebasePathPrefix
     self.maximumFileSize = maximumFileSize
+    self.allowedRuntimeSupplierURLs = allowedRuntimeSupplierURLs
   }
 }
 
@@ -66,21 +71,50 @@ public enum JnlpValidator {
 
     guard parser.parse(),
       delegate.sawJnlpRoot,
+      delegate.isSupported,
+      delegate.launchDescriptorCount == 1,
       let codebaseString = delegate.codebase,
       let codebaseURL = URL(string: codebaseString),
       isTrustedHTTPSURL(codebaseURL, policy: policy),
       isAllowedCodebasePath(codebaseURL.path, policy: policy),
+      let jnlpReference = delegate.jnlpReference,
+      isTrustedResource(
+        jnlpReference,
+        relativeTo: codebaseURL,
+        requiredExtension: "jnlp",
+        policy: policy
+      ),
+      delegate.runtimeSupplierReferences.allSatisfy(
+        policy.allowedRuntimeSupplierURLs.contains
+      ),
       !delegate.jarReferences.isEmpty
     else {
       return false
     }
 
     return delegate.jarReferences.allSatisfy { reference in
-      guard let jarURL = URL(string: reference, relativeTo: codebaseURL)?.absoluteURL else {
-        return false
-      }
-      return jarURL.pathExtension.lowercased() == "jar" && isTrustedHTTPSURL(jarURL, policy: policy)
+      isTrustedResource(
+        reference,
+        relativeTo: codebaseURL,
+        requiredExtension: "jar",
+        policy: policy
+      )
     }
+  }
+
+  private static func isTrustedResource(
+    _ reference: String,
+    relativeTo codebaseURL: URL,
+    requiredExtension: String,
+    policy: JnlpValidationPolicy
+  ) -> Bool {
+    guard let resourceURL = URL(string: reference, relativeTo: codebaseURL)?.absoluteURL else {
+      return false
+    }
+
+    return resourceURL.pathExtension.lowercased() == requiredExtension
+      && isTrustedHTTPSURL(resourceURL, policy: policy)
+      && isAllowedCodebasePath(resourceURL.path, policy: policy)
   }
 
   private static func isTrustedHTTPSURL(
@@ -113,9 +147,14 @@ public enum JnlpValidator {
 
 private final class JnlpParserDelegate: NSObject, XMLParserDelegate {
   var sawJnlpRoot = false
+  var isSupported = true
   var codebase: String?
+  var jnlpReference: String?
   var jarReferences: [String] = []
+  var runtimeSupplierReferences: [String] = []
+  var launchDescriptorCount = 0
   private var sawFirstElement = false
+  private var elementStack: [String] = []
 
   func parser(
     _ parser: XMLParser,
@@ -125,23 +164,82 @@ private final class JnlpParserDelegate: NSObject, XMLParserDelegate {
     attributes attributeDict: [String: String] = [:]
   ) {
     let localName = elementName.split(separator: ":").last.map(String.init) ?? elementName
+    let normalizedName = localName.lowercased()
 
     if !sawFirstElement {
       sawFirstElement = true
-      guard localName.lowercased() == "jnlp" else {
+      guard normalizedName == "jnlp" else {
         parser.abortParsing()
         return
       }
       sawJnlpRoot = true
       codebase = attributeDict["codebase"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+      jnlpReference = attributeDict["href"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+      elementStack.append(normalizedName)
       return
     }
 
-    if localName.lowercased() == "jar",
-      let reference = attributeDict["href"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !reference.isEmpty
-    {
+    let parentName = elementStack.last
+    elementStack.append(normalizedName)
+
+    if normalizedName == "jnlp" || (normalizedName == "resources" && parentName != "jnlp") {
+      isSupported = false
+    }
+
+    if parentName == "resources" {
+      guard ["jar", "java", "j2se"].contains(normalizedName) else {
+        isSupported = false
+        return
+      }
+    } else if ["jar", "java", "j2se"].contains(normalizedName) {
+      isSupported = false
+      return
+    }
+
+    switch normalizedName {
+    case "jar":
+      guard
+        let reference = attributeDict["href"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !reference.isEmpty
+      else {
+        isSupported = false
+        return
+      }
       jarReferences.append(reference)
+
+    case "java", "j2se":
+      if let reference = attributeDict["href"] {
+        let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedReference.isEmpty else {
+          isSupported = false
+          return
+        }
+        runtimeSupplierReferences.append(trimmedReference)
+      }
+
+    case "application-desc", "applet-desc":
+      guard parentName == "jnlp" else {
+        isSupported = false
+        return
+      }
+      launchDescriptorCount += 1
+
+    case "installer-desc", "component-desc":
+      isSupported = false
+
+    default:
+      break
+    }
+  }
+
+  func parser(
+    _ parser: XMLParser,
+    didEndElement elementName: String,
+    namespaceURI: String?,
+    qualifiedName qName: String?
+  ) {
+    if !elementStack.isEmpty {
+      elementStack.removeLast()
     }
   }
 }

@@ -8,6 +8,6 @@ For non-sensitive defects, open a regular GitHub issue with a minimal synthetic 
 
 ## Scope
 
-The project intentionally removes `com.apple.quarantine` only after checking the downloaded file's origin metadata and JNLP resource locations. A bypass of any of those checks is considered a security issue.
+The project intentionally removes `com.apple.quarantine` only after checking the downloaded file's origin metadata and supported JNLP resource locations. It accepts `jar` and `java`/`j2se` under `resources` and rejects unsupported resource types. A bypass of any of those checks is considered a security issue.
 
-The project does not audit or attest to Java code served by `e-imza.tubitak.gov.tr`.
+The project does not audit or attest to Java code served by `e-imza.tubitak.gov.tr`. Browser-written `kMDItemWhereFroms` metadata is not cryptographic proof of origin, and files can be modified after validation.
