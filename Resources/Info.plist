@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>TUBITAK JNLP Guard</string>
+  <key>CFBundleExecutable</key>
+  <string>TubitakJnlpGuard</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.kadirseker.TubitakJnlpGuard</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>TubitakJnlpGuard</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>TUBITAK e-signature JNLP files are checked in Downloads before their quarantine attribute is removed.</string>
+</dict>
+</plist>

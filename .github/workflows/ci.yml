@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: |
+          zsh -n scripts/build-app.sh
+          zsh -n scripts/install.sh
+          zsh -n scripts/uninstall.sh
+      - name: Validate property lists
+        run: |
+          plutil -lint Resources/Info.plist
+          plutil -lint Resources/LaunchAgent.plist
+      - name: Run tests
+        run: swift test
+      - name: Build app bundle
+        run: ./scripts/build-app.sh

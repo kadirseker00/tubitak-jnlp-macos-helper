@@ -1,0 +1,13 @@
+# Security Policy
+
+## Reporting a vulnerability
+
+Please use GitHub's private vulnerability reporting feature for security-sensitive findings. Do not attach live JNLP files, signing job identifiers, certificates, or personal documents to a public issue.
+
+For non-sensitive defects, open a regular GitHub issue with a minimal synthetic example.
+
+## Scope
+
+The project intentionally removes `com.apple.quarantine` only after checking the downloaded file's origin metadata and JNLP resource locations. A bypass of any of those checks is considered a security issue.
+
+The project does not audit or attest to Java code served by `e-imza.tubitak.gov.tr`.
